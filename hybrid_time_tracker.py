@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 import pandas as pd
 import customtkinter as ctk
+from PIL import Image
 
 # Windows-specific libraries for active window tracking
 import win32gui
@@ -44,7 +45,7 @@ class DatabaseManager:
             conn.commit()
 
     def log_session(self, group_name, program_name, window_title, start_dt, end_dt, duration_sec):
-        if duration_sec < 1:  # Ignore sessions under 1 second
+        if duration_sec < 1:
             return
         with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
@@ -63,18 +64,13 @@ class DatabaseManager:
             conn.commit()
 
     def get_group_total_seconds(self, group_name):
-        """Calculates total logged seconds for a specific group."""
         with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT SUM(duration_seconds) FROM time_logs WHERE group_name = ?", 
-                (group_name,)
-            )
+            cursor.execute("SELECT SUM(duration_seconds) FROM time_logs WHERE group_name = ?", (group_name,))
             result = cursor.fetchone()[0]
             return result if result else 0
 
     def get_program_total_seconds(self, group_name, program_name):
-        """Calculates total logged seconds for a specific program in a group."""
         with sqlite3.connect(self.db_name) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -87,20 +83,17 @@ class DatabaseManager:
     def export_to_excel(self, filename="time_tracker_report.xlsx"):
         with sqlite3.connect(self.db_name) as conn:
             df = pd.read_sql_query("SELECT * FROM time_logs", conn)
-            
             if df.empty:
                 return False, "No data available to export."
 
             df['Formatted Duration'] = df['duration_seconds'].apply(
                 lambda x: f"{x // 3600:02d}:{(x % 3600) // 60:02d}:{x % 60:02d}"
             )
-            
             df.to_excel(filename, index=False)
             return True, f"Successfully exported to {filename}"
 
 
 def get_active_window_info():
-    """Fetches active window title and executable name on Windows."""
     try:
         hwnd = win32gui.GetForegroundWindow()
         if not hwnd:
@@ -121,7 +114,6 @@ def get_active_window_info():
 
 
 class GroupManagerWindow(ctk.CTkToplevel):
-    """Dialog window to create/delete groups, view program lists, and remove programs."""
     def __init__(self, parent):
         super().__init__(parent)
         self.parent = parent
@@ -132,7 +124,6 @@ class GroupManagerWindow(ctk.CTkToplevel):
         self.setup_ui()
 
     def setup_ui(self):
-        # 1. Create New Group
         lbl_add_group = ctk.CTkLabel(self, text="1. Create New Group Container", font=ctk.CTkFont(size=13, weight="bold"))
         lbl_add_group.pack(anchor="w", padx=15, pady=(15, 2))
 
@@ -142,11 +133,9 @@ class GroupManagerWindow(ctk.CTkToplevel):
         btn_create_group = ctk.CTkButton(self, text="Create Group", fg_color="#2b5c8f", command=self.add_group)
         btn_create_group.pack(padx=15, pady=(0, 10))
 
-        # 2. Target Group Selection & Deletion / Program Assignment
         lbl_add_app = ctk.CTkLabel(self, text="2. Manage Selected Group", font=ctk.CTkFont(size=13, weight="bold"))
         lbl_add_app.pack(anchor="w", padx=15, pady=(10, 2))
 
-        # Row frame for dropdown + delete group button
         group_sel_frame = ctk.CTkFrame(self, fg_color="transparent")
         group_sel_frame.pack(fill="x", padx=15, pady=5)
 
@@ -173,14 +162,12 @@ class GroupManagerWindow(ctk.CTkToplevel):
         btn_add_exe = ctk.CTkButton(self, text="Add Program (.exe)", fg_color="#2b5c8f", command=self.add_exe)
         btn_add_exe.pack(padx=15, pady=(0, 10))
 
-        # 3. Scrollable List of Assigned Programs
         lbl_assigned = ctk.CTkLabel(self, text="Assigned Programs in Selected Group:", font=ctk.CTkFont(size=11, weight="bold"))
         lbl_assigned.pack(anchor="w", padx=15, pady=(5, 2))
 
         self.scroll_frame = ctk.CTkScrollableFrame(self, height=130)
         self.scroll_frame.pack(fill="both", expand=True, padx=15, pady=5)
 
-        # Dialog Status Line
         self.lbl_dialog_status = ctk.CTkLabel(self, text="", text_color="gray", font=ctk.CTkFont(size=11))
         self.lbl_dialog_status.pack(pady=5)
 
@@ -293,33 +280,57 @@ class TimeTrackerApp(ctk.CTk):
         super().__init__()
 
         self.title("tenKhours")
-        self.geometry("380x680")
+        self.geometry("380x720")
         self.attributes("-topmost", True)
 
         self.db = DatabaseManager()
 
-        # Load persisted groups or set default
         self.group_containers = self.load_groups()
         self.active_target_group = list(self.group_containers.keys())[0]
 
-        self.tracking_enabled = False  # Master Track toggle
-        self.is_session_active = False  # Current session tracking state
+        self.tracking_enabled = False
+        self.is_session_active = False
         self.current_program = ""
         self.current_title = ""
         self.start_timestamp = None
         self.elapsed_seconds = 0
 
-        # UI element map for individual program progress widgets
         self.program_progress_widgets = {}
 
+        # Corgi Animation State Variables
+        self.corgi_frames = []
+        self.corgi_idle = None
+        self.corgi_anim_index = 0
+
+        self.load_corgi_sprites()
         self.setup_ui()
         self.update_progress_display()
+
+        # Start animation loop
+        self.animate_corgi()
 
         self.monitor_thread = threading.Thread(target=self.track_loop, daemon=True)
         self.monitor_thread.start()
 
+    def load_corgi_sprites(self):
+        """Loads and resizes Corgi PNG frames from the 'corgie' subfolder."""
+        size = (48, 48)  # Display size inside UI
+        corgie_dir = os.path.join(os.path.dirname(__file__), "corgie")
+
+        # 1. Load punch frames (co_01.png -> co_07.png)
+        for i in range(1, 8):
+            filepath = os.path.join(corgie_dir, f"co_0{i}.png")
+            if os.path.exists(filepath):
+                pil_img = Image.open(filepath)
+                self.corgi_frames.append(ctk.CTkImage(light_image=pil_img, dark_image=pil_img, size=size))
+
+        # 2. Load idle frame (co_idle.png)
+        idle_path = os.path.join(corgie_dir, "co_idle.png")
+        if os.path.exists(idle_path):
+            pil_idle = Image.open(idle_path)
+            self.corgi_idle = ctk.CTkImage(light_image=pil_idle, dark_image=pil_idle, size=size)
+
     def load_groups(self):
-        """Loads group containers from a JSON file on startup."""
         if os.path.exists(GROUPS_FILE):
             try:
                 with open(GROUPS_FILE, "r") as f:
@@ -331,7 +342,6 @@ class TimeTrackerApp(ctk.CTk):
         return {"Default Group": []}
 
     def save_groups(self):
-        """Saves current group containers to a JSON file."""
         try:
             with open(GROUPS_FILE, "w") as f:
                 json.dump(self.group_containers, f, indent=4)
@@ -339,11 +349,9 @@ class TimeTrackerApp(ctk.CTk):
             print(f"Error saving groups: {e}")
 
     def setup_ui(self):
-        # Header
         self.title_label = ctk.CTkLabel(self, text="tenKhours", font=ctk.CTkFont(size=20, weight="bold"))
         self.title_label.pack(pady=(15, 5))
 
-        # Target Group Selector Dropdown
         lbl_select_group = ctk.CTkLabel(self, text="Active Group Container:", font=ctk.CTkFont(size=12))
         lbl_select_group.pack(anchor="w", padx=25, pady=(5, 0))
 
@@ -354,7 +362,6 @@ class TimeTrackerApp(ctk.CTk):
         )
         self.opt_group.pack(fill="x", padx=20, pady=(2, 5))
 
-        # Configure Groups Button
         self.btn_manage_groups = ctk.CTkButton(
             self, 
             text="⚙ Manage Groups & Programs", 
@@ -364,7 +371,6 @@ class TimeTrackerApp(ctk.CTk):
         )
         self.btn_manage_groups.pack(fill="x", padx=20, pady=5)
 
-        # 10,000 Hours Total Goal Progress Frame
         self.progress_frame = ctk.CTkFrame(self)
         self.progress_frame.pack(fill="x", padx=20, pady=10)
 
@@ -387,18 +393,19 @@ class TimeTrackerApp(ctk.CTk):
         )
         self.lbl_progress_stats.pack(anchor="w", padx=10, pady=(0, 8))
 
-        # Active Info Box (Removed "Group: Name" label as requested)
+        # Active App Info Card with Corgi Sprite side-by-side
         self.info_frame = ctk.CTkFrame(self)
         self.info_frame.pack(fill="x", padx=20, pady=5)
 
-        self.lbl_program = ctk.CTkLabel(self.info_frame, text="App: None", font=ctk.CTkFont(size=12, weight="bold"))
-        self.lbl_program.pack(anchor="w", padx=10, pady=8)
+        self.lbl_corgi = ctk.CTkLabel(self.info_frame, text="", image=self.corgi_idle)
+        self.lbl_corgi.pack(side="left", padx=(10, 5), pady=5)
 
-        # Big Timer Display
+        self.lbl_program = ctk.CTkLabel(self.info_frame, text="App: None", font=ctk.CTkFont(size=12, weight="bold"))
+        self.lbl_program.pack(side="left", padx=5, pady=8)
+
         self.lbl_timer = ctk.CTkLabel(self, text="00:00:00", font=ctk.CTkFont(size=32, weight="bold"))
         self.lbl_timer.pack(pady=5)
 
-        # Track / Stop Controls
         self.btn_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.btn_frame.pack(pady=5)
 
@@ -423,25 +430,34 @@ class TimeTrackerApp(ctk.CTk):
         )
         self.btn_stop.grid(row=0, column=1, padx=5)
 
-        # Export Button
         self.btn_export = ctk.CTkButton(self, text="📊 Export to Excel", fg_color="#3c4043", hover_color="#5f6368", command=self.export_excel)
         self.btn_export.pack(pady=5)
 
-        # Program Progress Section (Placed under Export to Excel button)
         lbl_prog_bars_title = ctk.CTkLabel(self, text="Assigned Programs Progress:", font=ctk.CTkFont(size=11, weight="bold"))
         lbl_prog_bars_title.pack(anchor="w", padx=25, pady=(5, 2))
 
         self.scroll_programs = ctk.CTkScrollableFrame(self, height=130)
         self.scroll_programs.pack(fill="both", expand=True, padx=20, pady=(0, 5))
 
-        # Status Line
         self.lbl_status = ctk.CTkLabel(self, text="Status: Stopped", font=ctk.CTkFont(size=11), text_color="gray")
         self.lbl_status.pack(side="bottom", pady=5)
 
         self.build_program_progress_bars()
 
+    def animate_corgi(self):
+        """Switches frames during active sessions or resets to idle pose."""
+        if self.is_session_active and self.corgi_frames:
+            current_frame = self.corgi_frames[self.corgi_anim_index]
+            self.lbl_corgi.configure(image=current_frame)
+            self.corgi_anim_index = (self.corgi_anim_index + 1) % len(self.corgi_frames)
+        else:
+            if self.corgi_idle:
+                self.lbl_corgi.configure(image=self.corgi_idle)
+            self.corgi_anim_index = 0
+
+        self.after(120, self.animate_corgi)
+
     def build_program_progress_bars(self):
-        """Rebuilds individual progress bars for programs in the current group."""
         for child in self.scroll_programs.winfo_children():
             child.destroy()
         self.program_progress_widgets.clear()
@@ -457,7 +473,6 @@ class TimeTrackerApp(ctk.CTk):
             card = ctk.CTkFrame(self.scroll_programs, fg_color="#2b2d30")
             card.pack(fill="x", pady=4, padx=2)
 
-            # Row header: Program Name & Stats
             header_frame = ctk.CTkFrame(card, fg_color="transparent")
             header_frame.pack(fill="x", padx=8, pady=(4, 2))
 
@@ -496,8 +511,6 @@ class TimeTrackerApp(ctk.CTk):
         GroupManagerWindow(self)
 
     def update_progress_display(self):
-        """Updates total group progress bar and individual program progress bars."""
-        # 1. Update Group Total
         past_seconds = self.db.get_group_total_seconds(self.active_target_group)
         current_session_seconds = self.elapsed_seconds if self.is_session_active else 0
         total_seconds = past_seconds + current_session_seconds
@@ -511,14 +524,12 @@ class TimeTrackerApp(ctk.CTk):
             text=f"{total_hours:.2f} / 10,000 hrs ({percentage:.4f}%)"
         )
 
-        # 2. Update Per-Program Progress Bars
         assigned_programs = self.group_containers.get(self.active_target_group, [])
         for exe in assigned_programs:
             exe_key = exe.lower()
             if exe_key in self.program_progress_widgets:
                 prog_past_sec = self.db.get_program_total_seconds(self.active_target_group, exe)
                 
-                # Include active session seconds if this exact app is running
                 if self.is_session_active and self.current_program.lower() == exe_key:
                     prog_total_sec = prog_past_sec + self.elapsed_seconds
                 else:
@@ -548,7 +559,6 @@ class TimeTrackerApp(ctk.CTk):
         self.lbl_status.configure(text="Status: Stopped")
 
     def track_loop(self):
-        """Monitors active window continuously when tracking is enabled."""
         while True:
             if self.tracking_enabled:
                 prog, title = get_active_window_info()
