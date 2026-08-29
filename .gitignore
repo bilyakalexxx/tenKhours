@@ -1,0 +1,22 @@
+# Python virtual environment
+venv/
+env/
+.venv/
+
+# Python bytecode / cache
+__pycache__/
+*.py[cod]
+
+# SQLite database (contains your local time logs)
+*.db
+
+# JSON local user config (if you want fresh settings per machine)
+# Uncomment the line below if you don't want to track group_containers.json:
+# group_containers.json
+
+# Generated Excel exports
+*.xlsx
+
+# IDE / Editor folders
+.vscode/
+.idea/
