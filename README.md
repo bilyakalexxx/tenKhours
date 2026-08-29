@@ -41,17 +41,3 @@ Instead of generic time trackers that measure raw screen time, **tenKhours** gro
 - **Language**: Python 3.8+
 
 ---
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-* Windows OS (required for native `win32gui` window tracking).
-* Python 3.8 or higher installed on your machine.
-
-### Installation
-
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/bilyakalexxx/tenKhours.git](https://github.com/bilyakalexxx/tenKhours.git)
-   cd tenKhours
