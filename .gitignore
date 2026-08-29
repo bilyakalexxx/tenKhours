@@ -20,3 +20,8 @@ __pycache__/
 # IDE / Editor folders
 .vscode/
 .idea/
+
+# PyInstaller
+build/
+dist/
+*.spec
