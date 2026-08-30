@@ -41,3 +41,11 @@ Instead of generic time trackers that measure raw screen time, **tenKhours** gro
 - **Language**: Python 3.8+
 
 ---
+
+## 📖 App Guide
+
+![Guide Step 1](guide/guide_01.png)
+![Guide Step 2](guide/guide_02.png)
+![Guide Step 3](guide/guide_03.png)
+![Guide Step 4](guide/guide_04.png)
+![Guide Step 5](guide/guide_05.png)
